@@ -45,6 +45,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVES = 5, ARENA = 25;
 const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 30, DASH_CD = 1.2, MIN_TTL = 4.5;
 const MOBILE = matchMedia('(pointer: coarse)').matches, JOY_DEAD = .2;
+const RING_VOL = .012;
 const COMBO_WINDOW = 4, CLUTCH_T = 1.2, POWER_CHANCE = .35, POWER_LIFE = 10, MAGNET_T = 8, STAR_T = 3;
 const DASH_CHARGES = 3, GHOST_EVERY = .025, GHOST_LIFE = .45, ANSWER_BONUS = 2, RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
@@ -138,7 +139,7 @@ const tone = (f, t0, dur, type='sine', vol=.2, f2, out=master) => {
 };
 const say = (txt, pitch=.3) => { const u = new SpeechSynthesisUtterance(txt); u.pitch = pitch; u.rate = .9; speechSynthesis.cancel(); speechSynthesis.speak(u); };
 const sfx = {
-  ring: () => { for (let i = 0; i < 8; i++) tone(i%2 ? 1400 : 1100, i*.07, .06, 'square', .04); },
+  ring: () => { for (let i = 0; i < 8; i++) tone(i%2 ? 1400 : 1100, i*.07, .06, 'square', RING_VOL); },
   oink: () => { const p = .8+Math.random()*.5; tone(320*p, 0, .14, 'sawtooth', .2, 170*p); tone(280*p, .16, .2, 'sawtooth', .2, 130*p); },
   boom: () => { tone(110, 0, 1.4, 'sine', .9, 28); tone(55, 0, 1.4, 'triangle', .7, 20); },
   jump: () => tone(250, 0, .25, 'square', .06, 1000),
