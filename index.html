@@ -3,6 +3,8 @@
 <style>
 body{touch-action:none;margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;color:#fff;user-select:none}
 #hud{position:fixed;top:10px;left:14px;font-size:30px;text-shadow:3px 3px #000}
+#quests{position:fixed;top:52px;left:14px;font:bold 17px sans-serif;text-shadow:2px 2px #000;line-height:1.5}
+#quests .ok{color:#6f6;text-decoration:line-through}
 #combo{position:fixed;top:10px;right:16px;font-size:40px;color:#ff0;text-shadow:3px 3px #000;animation:rb 1s linear infinite}
 @keyframes rb{to{filter:hue-rotate(360deg)}}
 #hm{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%) rotate(45deg);font-size:90px;color:#fff;text-shadow:0 0 6px #000;display:none;pointer-events:none}
@@ -27,9 +29,9 @@ body{touch-action:none;margin:0;overflow:hidden;background:#1a0f1f;font-family:I
 @keyframes zoom{from{transform:scale(.2) rotate(-20deg)}}
 @keyframes up{to{transform:translateY(-120px) scale(1.4);opacity:0}}
 </style></head><body>
-<div id="hud"></div><div id="hm">✚</div><div id="combo"></div><div id="cbar"></div><div id="call"></div>
+<div id="hud"></div><div id="quests"></div><div id="hm">✚</div><div id="combo"></div><div id="cbar"></div><div id="call"></div>
 <div id="speed"></div><div id="touch"><div id="stick"><div id="knob"></div></div><div id="btns"><b data-a="jump">⬆️</b><b data-a="atk">👊</b><b data-a="dash">⚡</b></div></div><div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
-<div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · hold SPACE after double jump = glide<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
+<div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · hold SPACE after double jump = glide<br>🟢 answer · 🟡 x5 · 💎 x25 · 🔴 SPAM chases you</small></p></div>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -46,6 +48,10 @@ const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVE
 const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 30, DASH_CD = 1.2, MIN_TTL = 4.5;
 const MOBILE = matchMedia('(pointer: coarse)').matches, JOY_DEAD = .2;
 const RING_VOL = .012;
+const DIAMOND_CHANCE = .03, DIAMOND_PTS = 25, MISSION_XP = 25, XP_PER_LVL = 50;
+const MISSIONS = [['air','Answer {n} calls mid-air',3], ['smash','Smash {n} spam',5], ['clutch','{n} clutch answers',2], ['gold','Answer {n} golden calls',2],
+  ['combo','Reach a x{n} combo',10], ['slam','Slam-kill {n} spam',2], ['score','Score {n} points',60], ['power','Grab {n} power-ups',3]];
+const RANKS = ['Pork Intern','Bacon Bit','Ham Rookie','Sigma Swine','Oink Lord','Pork CEO','Mega Hog','JOHN PORK HIMSELF'];
 const COMBO_WINDOW = 4, CLUTCH_T = 1.2, POWER_CHANCE = .35, POWER_LIFE = 10, MAGNET_T = 8, STAR_T = 3;
 const DASH_CHARGES = 3, GHOST_EVERY = .025, GHOST_LIFE = .45, ANSWER_BONUS = 2, RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
@@ -176,10 +182,10 @@ const bodyMat = new THREE.MeshStandardMaterial({color:0x111111, roughness:.2, me
 const screenMat = new THREE.MeshBasicMaterial({map:callTex, toneMapped:false});
 const beamMat = c => new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:.25, depthWrite:false, blending:THREE.AdditiveBlending});
 let phones = [];
-const KINDS = {call:{beam:0x33ff66, body:bodyMat}, gold:{beam:0xffcc00, body:new THREE.MeshStandardMaterial({color:0xffcc00, metalness:1, roughness:.2, emissive:0x553300})}, spam:{beam:0xff2222, body:new THREE.MeshStandardMaterial({color:0xaa0000, emissive:0x440000})}};
+const KINDS = {call:{beam:0x33ff66, body:bodyMat}, gold:{beam:0xffcc00, body:new THREE.MeshStandardMaterial({color:0xffcc00, metalness:1, roughness:.2, emissive:0x553300})}, diamond:{beam:0x66ffff, body:new THREE.MeshStandardMaterial({color:0x99ffff, metalness:1, roughness:.05, emissive:0x116677})}, spam:{beam:0xff2222, body:new THREE.MeshStandardMaterial({color:0xaa0000, emissive:0x440000})}};
 const spamTex = (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d'); x.fillStyle = '#300'; x.fillRect(0, 0, 128, 256); x.font = 'bold 26px Impact'; x.fillStyle = '#f44'; x.textAlign = 'center'; x.fillText('SPAM', 64, 90); x.fillText('LIKELY', 64, 120); x.font = '60px serif'; x.fillText('🤡', 64, 200); return new THREE.CanvasTexture(c); })();
 const spawnPhone = () => {
-  const r = Math.random(), kind = r < SPAM_CHANCE ? 'spam' : r < SPAM_CHANCE + GOLD_CHANCE ? 'gold' : 'call', K = KINDS[kind];
+  const r = Math.random(), kind = r < DIAMOND_CHANCE ? 'diamond' : r < SPAM_CHANCE ? 'spam' : r < SPAM_CHANCE + GOLD_CHANCE ? 'gold' : 'call', K = KINDS[kind];
   const g = new THREE.Group(), body = new THREE.Mesh(new THREE.BoxGeometry(1, 1.9, .12), K.body);
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(.92, 1.8), kind === 'spam' ? new THREE.MeshBasicMaterial({map:spamTex}) : screenMat); screen.position.z = .065;
   const back = screen.clone(); back.rotation.y = Math.PI; back.position.z = -.065;
@@ -261,7 +267,7 @@ let running = false, score = 0, lives, vy, spawnT, actionT, combo, giantT, dashT
 let jumps = 0, atkCd = 0, lungeT = 0, pounding = false, invT = 0, hitstop = 0;
 const facing = () => new THREE.Vector3(Math.sin(john.rotation.y), 0, Math.cos(john.rotation.y));
 const comboUp = () => {
-  combo++;
+  combo++; bump('combo', combo);
   if (combo % LIFE_EVERY === 0 && lives < MAX_LIVES) { lives++; pop('+1 🐷 EXTRA LIFE', '#6f6'); }
   if (combo % 5 === 0) sfx.airhorn();
   if (combo % GIANT_EVERY === 0) { giantT = 6; for (let i = 0; i < 8; i++) setTimeout(() => splash(john.position.clone().add(new THREE.Vector3(R(-10, 10), R(8, 16), R(-10, 10))), 0xffdd33), i*120); say('MEGA JOHN PORK', .1); pop('🐷 MEGA PORK MODE 🐷', '#f6f'); sfx.boom(); shake = .5; }
@@ -273,39 +279,52 @@ const spawnPower = pos => {
   const e = Object.keys(POWERS)[Math.random()*4|0], m = new THREE.Sprite(new THREE.SpriteMaterial({map:emoji(e), fog:false}));
   m.position.copy(pos).setY(1); m.scale.setScalar(1.4); m.userData = {e, life:POWER_LIFE}; scene.add(m); powers.push(m);
 };
+let xp = +localStorage.jpXp || 0, stats = {}, quests = [];
+const lvl = x => Math.floor(Math.sqrt(x/XP_PER_LVL)), rankOf = l => RANKS[Math.min(Math.floor(l/2), RANKS.length-1)];
+const rankLine = () => { const l = lvl(xp), a = XP_PER_LVL*l*l, b = XP_PER_LVL*(l+1)**2, k = Math.round((xp-a)/(b-a)*10); return `LVL ${l} · ${rankOf(l)} ${'▰'.repeat(k)}${'▱'.repeat(10-k)}`; };
+const pickQuests = () => { stats = {}; const m = 1 + Math.floor(lvl(xp)/3)*.5; quests = [...MISSIONS].sort(() => Math.random()-.5).slice(0, 3).map(([k, t, n]) => ({k, n:Math.round(n*m), t:t.replace('{n}', Math.round(n*m)), done:false})); };
+const bump = (k, v=1) => {
+  stats[k] = k === 'combo' || k === 'score' ? Math.max(stats[k] || 0, v) : (stats[k] || 0) + v;
+  for (const q of quests) if (!q.done && q.k === k && stats[k] >= q.n) { q.done = true; score += MISSION_XP; setTimeout(() => { pop(`✅ MISSION DONE +${MISSION_XP}`, '#6f6'); sfx.airhorn(); }, 400); }
+  $('quests').innerHTML = quests.map(q => `<div class="${q.done ? 'ok' : ''}">${q.done ? '✅' : '▫️'} ${q.t} ${q.done ? '' : `(${Math.min(stats[q.k] || 0, q.n)}/${q.n})`}</div>`).join('');
+};
 const grab = m => {
+  bump('power');
   const e = m.userData.e; scene.remove(m); powers.splice(powers.indexOf(m), 1); sfx.coin(); sfx.airhorn(); pop(`${e} ${POWERS[e]}`, '#6ff');
   if (e === '🧲') magnetT = MAGNET_T; else if (e === '❤️') lives = Math.min(MAX_LIVES, lives+1);
   else if (e === '⏱️') phones.forEach(q => q.userData.ttl += 4); else { dashN = DASH_CHARGES; starT = STAR_T; }
 };
 const drop = p => { scene.remove(p); phones.splice(phones.indexOf(p), 1); };
 const answer = p => {
-  drop(p); const gold = p.userData.kind === 'gold', mult = 1 + Math.floor(combo/5);
+  drop(p); const kind = p.userData.kind, gold = kind === 'gold' || kind === 'diamond', val = {gold:5, diamond:DIAMOND_PTS}[kind] || 1, mult = 1 + Math.floor(combo/5);
   for (const q of phones) if (q.userData.kind !== 'spam') q.userData.ttl = Math.min(PHONE_TTL, q.userData.ttl + ANSWER_BONUS*(gold ? 2 : 1));
   const clutch = p.userData.ttl < CLUTCH_T, air = john.position.y > .6;
-  score += (gold ? 5 : 1)*mult*(air ? 2 : 1) + (clutch ? 3*mult : 0); comboT = COMBO_WINDOW;
+  score += val*mult*(air ? 2 : 1) + (clutch ? 3*mult : 0); comboT = COMBO_WINDOW;
+  if (air) bump('air'); if (clutch) bump('clutch'); if (gold) bump('gold'); if (kind === 'diamond') { sfx.airhorn(); shake = .4; say('Diamond pork'); }
   if (clutch) setTimeout(() => pop('CLUTCH 😤 +' + 3*mult, '#f55'), 150); if (air) setTimeout(() => pop('AIR CALL ✈️ x2', '#aef'), 300);
-  sfx.oink(); sfx.coin(); splash(p.position, gold ? 0xffcc00 : 0x33ff66);
-  pop(gold ? `GOLDEN PORK +${5*mult} 🏆` : MEMES[Math.random()*MEMES.length|0], gold ? '#fc0' : '#fff'); comboUp();
+  sfx.oink(); sfx.coin(); splash(p.position, kind === 'diamond' ? 0x66ffff : gold ? 0xffcc00 : 0x33ff66);
+  pop(kind === 'diamond' ? `💎 DIAMOND CALL +${val*mult} 💎` : gold ? `GOLDEN PORK +${5*mult} 🏆` : MEMES[Math.random()*MEMES.length|0], gold ? '#fc0' : '#fff'); comboUp(); bump('score', score);
 };
 const smash = (p, txt) => {
-  phones.splice(phones.indexOf(p), 1); const mult = 1 + Math.floor(combo/5); score += mult; comboT = COMBO_WINDOW; if (Math.random() < POWER_CHANCE) spawnPower(p.position);
+  phones.splice(phones.indexOf(p), 1); const mult = 1 + Math.floor(combo/5); score += mult; comboT = COMBO_WINDOW; bump('smash'); if (txt === 'SLAMMED') bump('slam'); bump('score', score); if (Math.random() < POWER_CHANCE) spawnPower(p.position);
   p.userData.fly = p.position.clone().sub(john.position).setY(0).normalize().multiplyScalar(28).setY(14); p.userData.life = .6; flying.push(p);
   sfx.smack(); impact(); hitstop = HITSTOP; shake = Math.max(shake, .35); splash(p.position, 0xff8800); pop(`${txt} +${mult}`, '#f80'); comboUp();
 };
 $('menu').onclick = () => {
   if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.connect(ac.destination); } bgm.play();
   if (!john) return;
-  score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = dashQ = false; dashN = DASH_CHARGES; comboT = magnetT = starT = 0; bestShown = false;
+  score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = dashQ = false; dashN = DASH_CHARGES; comboT = magnetT = starT = 0; bestShown = false; pickQuests(); bump('score', 0);
   [...phones, ...powers].forEach(p => scene.remove(p)); phones = []; powers = [];
   dying = false; halo.visible = false; john.rotation.set(0, 0, 0); john.position.set(0, 0, 0); $('menu').style.display = 'none'; running = true; sfx.oink(); say('Hello? This is John Pork');
 };
 let dying = false;
+$('msg').innerHTML += `<br>${rankLine()}`;
 const crown = new THREE.Sprite(new THREE.SpriteMaterial({map:emoji('👑'), fog:false})); scene.add(crown);
 const halo = new THREE.Mesh(new THREE.TorusGeometry(.45, .06, 8, 32), new THREE.MeshBasicMaterial({color:0xffee88})); halo.rotation.x = Math.PI/2; halo.visible = false; scene.add(halo);
 const gameOver = () => {
   running = false; dying = true; aura.material.uniforms.o.value = 0; halo.visible = true; phones.forEach(p => scene.remove(p)); phones = []; sfx.boom(); john.visible = true; play('Fall1', true); say('John Pork declined your call', .1);
-  setTimeout(() => { const nb = score > best; if (nb) localStorage.jpBest = best = score; $('msg').innerHTML = `🕊️ RIP JOHN PORK · ${score} PTS${nb ? ' · 🔥 NEW BEST 🔥' : ` · BEST ${best}`}<br>CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 4000);
+  const l0 = lvl(xp); xp += score; localStorage.jpXp = xp; const up = lvl(xp) > l0; $('quests').innerHTML = '';
+  setTimeout(() => { const nb = score > best; if (nb) localStorage.jpBest = best = score; $('msg').innerHTML = `🕊️ RIP JOHN PORK · ${score} PTS${nb ? ' · 🔥 NEW BEST 🔥' : ` · BEST ${best}`}<br>+${score} XP${up ? ' · ⬆️ RANK UP!' : ''}<br>${rankLine()}<br>CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); if (up) { sfx.airhorn(); say(rankOf(lvl(xp))); } }, 2500);
 };
 
 const clock = new THREE.Clock(), v3 = new THREE.Vector3();
