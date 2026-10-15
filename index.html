@@ -1,0 +1,330 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>John Pork 3D</title>
+<style>
+body{margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;color:#fff;user-select:none}
+#hud{position:fixed;top:10px;left:14px;font-size:30px;text-shadow:3px 3px #000}
+#combo{position:fixed;top:10px;right:16px;font-size:40px;color:#ff0;text-shadow:3px 3px #000}
+#menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(#3a1f3fcc,#000e);cursor:pointer}
+#menu img{width:min(62vh,80vw);animation:bob 1.2s ease-in-out infinite;filter:drop-shadow(0 10px 30px #000)}
+#menu p{font-size:32px;margin:0;text-shadow:3px 3px #000;animation:blink 1s steps(2) infinite}
+#call{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:34px;color:#4f4;text-shadow:3px 3px #000}
+#scare{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#a00a;pointer-events:none}
+#scare img{width:min(70vh,90vw);animation:zoom .6s ease-out}
+#scare b{font-size:80px;text-shadow:4px 4px #000}
+.pop{position:fixed;font-size:38px;color:#fff;text-shadow:3px 3px #000,-2px -2px #f0f;pointer-events:none;animation:up 1.2s ease-out forwards;white-space:nowrap}
+@keyframes bob{50%{transform:translateY(-14px) rotate(-2deg)}}
+@keyframes blink{50%{opacity:.3}}
+@keyframes zoom{from{transform:scale(.2) rotate(-20deg)}}
+@keyframes up{to{transform:translateY(-120px) scale(1.4);opacity:0}}
+</style></head><body>
+<div id="hud"></div><div id="combo"></div><div id="call"></div>
+<div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
+<div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · dash through spam<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+
+const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 6, SPAWN_EVERY = 2.2, LIVES = 3, ARENA = 25;
+const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 22, DASH_CD = 1.5, MIN_TTL = 3.5;
+const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
+const MEMES = ['bro picked up 💀','+1000 aura','OINK OINK','he\'s calling again','skibidi pork 🚽','W rizz','hello?? 🐷','sigma pork','no cap fr','💀💀💀','ratio + oink'];
+
+// --- renderer / scene ---
+const ren = new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(Math.min(devicePixelRatio, 2)); ren.setSize(innerWidth, innerHeight);
+ren.shadowMap.enabled = true; ren.shadowMap.type = THREE.PCFSoftShadowMap;
+ren.toneMapping = THREE.ACESFilmicToneMapping; ren.toneMappingExposure = 1.1;
+document.body.appendChild(ren.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x6a3a6a, .018);
+const cam = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .1, 300);
+const composer = new EffectComposer(ren);
+composer.addPass(new RenderPass(scene, cam));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .6, .5, .85));
+composer.addPass(new OutputPass());
+const grade = new ShaderPass({uniforms:{tDiffuse:{value:null}, t:{value:0}},
+  vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'uniform sampler2D tDiffuse;uniform float t;varying vec2 vUv;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}void main(){vec2 o=(vUv-.5)*.003;vec3 c=vec3(texture2D(tDiffuse,vUv+o).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-o).b);c*=1.-.55*pow(length(vUv-.5)*1.3,2.5);c=mix(c,c*vec3(1.08,1.,1.05),.5);c+=(h(vUv+t)-.5)*.04;gl_FragColor=vec4(c,1.);}'});
+composer.addPass(grade);
+addEventListener('resize', () => {cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix(); ren.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);});
+
+// sunset sky dome
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), new THREE.ShaderMaterial({side:THREE.BackSide, depthWrite:false, fog:false,
+  vertexShader:'varying vec3 p;void main(){p=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'varying vec3 p;void main(){float h=p.y;vec3 c=mix(vec3(1.,.55,.6),vec3(.25,.1,.4),smoothstep(0.,.6,h));c=mix(vec3(.4,.2,.4),c,smoothstep(-.1,0.,h));gl_FragColor=vec4(c,1.);}'})));
+scene.environment = new THREE.PMREMGenerator(ren).fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .5;
+scene.add(new THREE.HemisphereLight(0xffccee, 0x3a2010, 1.2));
+const rim = new THREE.DirectionalLight(0xff66cc, 2); rim.position.set(-10, 8, -15); scene.add(rim);
+const sun = new THREE.DirectionalLight(0xffd0a0, 3); sun.position.set(15, 25, 10); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0005; sun.shadow.radius = 4; Object.assign(sun.shadow.camera, {left:-30, right:30, top:30, bottom:-30}); scene.add(sun);
+
+// mud ground (procedural canvas texture)
+const mudTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
+  x.fillStyle = '#5a3a1e'; x.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 4000; i++) { x.fillStyle = `hsla(${25+Math.random()*10},45%,${15+Math.random()*25}%,.35)`; x.beginPath(); x.arc(Math.random()*512, Math.random()*512, Math.random()*6, 0, 7); x.fill(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 8); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const ground = new THREE.Mesh(new THREE.CircleGeometry(ARENA+40, 64), new THREE.MeshStandardMaterial({map:mudTex, roughness:.95}));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+const puddleMat = new THREE.MeshStandardMaterial({color:0x2e1a0a, roughness:.05, metalness:.3});
+for (let i = 0; i < 25; i++) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(1+Math.random()*2.5, 20), puddleMat);
+  m.rotation.x = -Math.PI/2; m.scale.y = .6+Math.random()*.6; m.position.set((Math.random()-.5)*2*ARENA, .02, (Math.random()-.5)*2*ARENA); m.receiveShadow = true; scene.add(m);
+}
+// fence ring + floating pink donuts (pig-tail vibes)
+const wood = new THREE.MeshStandardMaterial({color:0x7a4a26, roughness:.9});
+for (let i = 0; i < 60; i++) {
+  const a = i/60*Math.PI*2, post = new THREE.Mesh(new THREE.BoxGeometry(.3, 1.6, .3), wood);
+  post.position.set(Math.cos(a)*(ARENA+2), .8, Math.sin(a)*(ARENA+2)); post.castShadow = true; scene.add(post);
+}
+const rail = new THREE.Mesh(new THREE.TorusGeometry(ARENA+2, .1, 6, 120), wood); rail.rotation.x = Math.PI/2; rail.position.y = 1.2; scene.add(rail);
+const deco = [], dummy = new THREE.Object3D(), R = (a, b) => a + Math.random()*(b-a);
+const scatter = (geo, mat, n, rmin, rmax, f) => {
+  const im = new THREE.InstancedMesh(geo, mat, n); im.castShadow = im.receiveShadow = true;
+  for (let i = 0; i < n; i++) { const a = R(0, 7), r = R(rmin, rmax); dummy.position.set(Math.cos(a)*r, 0, Math.sin(a)*r); dummy.rotation.set(0, R(0, 7), 0); dummy.scale.setScalar(1); f?.(dummy); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); im.setColorAt?.(i, new THREE.Color().setHSL(R(.22, .3), .5, R(.2, .35))); }
+  scene.add(im); return im;
+};
+const grass = new THREE.ConeGeometry(.08, .7, 3); grass.translate(0, .35, 0);
+scatter(grass, new THREE.MeshStandardMaterial({color:0xffffff, roughness:.8}), 4000, 0, ARENA+30, d => { d.scale.set(1, R(.5, 1.6), 1); d.rotation.x = R(-.3, .3); });
+const rockMat = new THREE.MeshStandardMaterial({color:0x777066, roughness:.9, flatShading:true});
+const rocks = scatter(new THREE.DodecahedronGeometry(.6, 0), rockMat, 60, 3, ARENA+30, d => { d.scale.set(R(.5, 2), R(.4, 1.2), R(.5, 2)); d.position.y = .1; });
+for (let i = 0; i < 60; i++) rocks.setColorAt(i, new THREE.Color(0x887766));
+const trunk = new THREE.CylinderGeometry(.25, .35, 3, 6); trunk.translate(0, 1.5, 0);
+const trees = Array.from({length:50}, () => { const a = R(0, 7), r = R(ARENA+6, ARENA+35); return [Math.cos(a)*r, Math.sin(a)*r, R(.7, 1.5)]; });
+const treeAt = i => d => { d.position.set(trees[i][0], 0, trees[i][1]); d.scale.setScalar(trees[i][2]); };
+let ti = 0, li = 0;
+const trunks = scatter(trunk, new THREE.MeshStandardMaterial({color:0x5a3a22}), 50, 0, 1, d => treeAt(ti++)(d));
+for (let i = 0; i < 50; i++) trunks.setColorAt(i, new THREE.Color(0xffffff));
+const leaves = new THREE.IcosahedronGeometry(1.8, 1); leaves.translate(0, 4, 0);
+scatter(leaves, new THREE.MeshStandardMaterial({color:0xffffff, roughness:.7, flatShading:true}), 50, 0, 1, d => treeAt(li++)(d));
+const dust = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(Array.from({length:1500}, (_, i) => i%3 === 1 ? R(0, 12) : R(-40, 40)), 3)),
+  new THREE.PointsMaterial({color:0xffccaa, size:.08, transparent:true, opacity:.7, blending:THREE.AdditiveBlending, depthWrite:false}));
+scene.add(dust);
+for (let i = 0; i < 14; i++) {
+  const t = new THREE.Mesh(new THREE.TorusKnotGeometry(1.2, .35, 80, 10, 2, 3), new THREE.MeshStandardMaterial({color:0xff7799, roughness:.4, emissive:0x551122}));
+  const a = Math.random()*Math.PI*2, r = ARENA+10+Math.random()*25;
+  t.position.set(Math.cos(a)*r, 4+Math.random()*10, Math.sin(a)*r); t.castShadow = true; scene.add(t); deco.push(t);
+}
+
+// --- audio ---
+let ac, master;
+const tone = (f, t0, dur, type='sine', vol=.2, f2, out=master) => {
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + t0;
+  o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t+dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t+dur);
+  o.connect(g).connect(out); o.start(t); o.stop(t+dur);
+};
+const say = (txt, pitch=.3) => { const u = new SpeechSynthesisUtterance(txt); u.pitch = pitch; u.rate = .9; speechSynthesis.cancel(); speechSynthesis.speak(u); };
+const sfx = {
+  ring: () => { for (let i = 0; i < 8; i++) tone(i%2 ? 1400 : 1100, i*.07, .06, 'square', .04); },
+  oink: () => { const p = .8+Math.random()*.5; tone(320*p, 0, .14, 'sawtooth', .2, 170*p); tone(280*p, .16, .2, 'sawtooth', .2, 130*p); },
+  boom: () => { tone(110, 0, 1.4, 'sine', .9, 28); tone(55, 0, 1.4, 'triangle', .7, 20); },
+  jump: () => tone(250, 0, .25, 'square', .06, 1000),
+  coin: () => { tone(988, 0, .08, 'square', .06); tone(1319, .08, .3, 'square', .06); },
+  whoosh: () => tone(900, 0, .12, 'sawtooth', .05, 200),
+  smack: () => { tone(180, 0, .18, 'square', .35, 40); tone(1200, 0, .06, 'sawtooth', .15, 300); },
+  slam: () => { tone(90, 0, .6, 'sine', .9, 25); tone(300, 0, .3, 'square', .2, 50); },
+};
+const bgm = new Audio('music.mp3'); bgm.loop = true; bgm.volume = MUSIC_VOL;
+
+// --- John ---
+let john, mixer, acts = {}, cur, baseScale = 1;
+const play = (name, once) => {
+  const a = acts[name]; if (!a || cur === a) return;
+  a.reset().setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat).play(); a.clampWhenFinished = true;
+  if (cur) cur.crossFadeTo(a, .2, false); cur = a;
+};
+new GLTFLoader().load('john.glb', g => {
+  john = g.scene;
+  const box = new THREE.Box3().setFromObject(john);
+  baseScale = 2.2/(box.max.y - box.min.y); john.scale.setScalar(baseScale);
+  john.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+  scene.add(john);
+  mixer = new THREE.AnimationMixer(john);
+  for (const c of g.animations) acts[c.name] = mixer.clipAction(c);
+  play('Breakdance_1990');
+});
+
+// --- phones: 3D phone with the call screenshot on the screen + green beam ---
+const callTex = new THREE.TextureLoader().load('call.jpeg'); callTex.colorSpace = THREE.SRGBColorSpace;
+const bodyMat = new THREE.MeshStandardMaterial({color:0x111111, roughness:.2, metalness:.8});
+const screenMat = new THREE.MeshBasicMaterial({map:callTex, toneMapped:false});
+const beamMat = c => new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:.25, depthWrite:false, blending:THREE.AdditiveBlending});
+let phones = [];
+const KINDS = {call:{beam:0x33ff66, body:bodyMat}, gold:{beam:0xffcc00, body:new THREE.MeshStandardMaterial({color:0xffcc00, metalness:1, roughness:.2, emissive:0x553300})}, spam:{beam:0xff2222, body:new THREE.MeshStandardMaterial({color:0xaa0000, emissive:0x440000})}};
+const spamTex = (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 256; const x = c.getContext('2d'); x.fillStyle = '#300'; x.fillRect(0, 0, 128, 256); x.font = 'bold 26px Impact'; x.fillStyle = '#f44'; x.textAlign = 'center'; x.fillText('SPAM', 64, 90); x.fillText('LIKELY', 64, 120); x.font = '60px serif'; x.fillText('🤡', 64, 200); return new THREE.CanvasTexture(c); })();
+const spawnPhone = () => {
+  const r = Math.random(), kind = r < SPAM_CHANCE ? 'spam' : r < SPAM_CHANCE + GOLD_CHANCE ? 'gold' : 'call', K = KINDS[kind];
+  const g = new THREE.Group(), body = new THREE.Mesh(new THREE.BoxGeometry(1, 1.9, .12), K.body);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(.92, 1.8), kind === 'spam' ? new THREE.MeshBasicMaterial({map:spamTex}) : screenMat); screen.position.z = .065;
+  const back = screen.clone(); back.rotation.y = Math.PI; back.position.z = -.065;
+  body.castShadow = true; g.add(body, screen, back);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, 30, 16, 1, true), beamMat(K.beam)); beam.position.y = 14; g.add(beam);
+  g.position.set((Math.random()-.5)*2*ARENA*.85, 1.6, (Math.random()-.5)*2*ARENA*.85);
+  g.userData = {ttl: Math.max(MIN_TTL, PHONE_TTL - score*.05), kind}; scene.add(g); phones.push(g); if (kind !== 'spam') sfx.ring();
+};
+// splash particles
+const parts = [];
+const splash = (pos, color) => {
+  for (let i = 0; i < 25; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.12, 6, 4), new THREE.MeshBasicMaterial({color}));
+    m.position.copy(pos); m.userData.v = new THREE.Vector3((Math.random()-.5)*10, Math.random()*10, (Math.random()-.5)*10); m.userData.life = 1;
+    scene.add(m); parts.push(m);
+  }
+};
+
+const flying = [], rings = [];
+const ring = (pos, r) => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(.8, 1, 48), new THREE.MeshBasicMaterial({color:0xff88ff, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide}));
+  m.rotation.x = -Math.PI/2; m.position.copy(pos).setY(.1); m.userData = {r, life:1}; scene.add(m); rings.push(m);
+};
+
+// --- UI helpers ---
+const $ = id => document.getElementById(id);
+const pop = (txt, color='#fff') => {
+  const d = document.createElement('div'); d.className = 'pop'; d.textContent = txt; d.style.color = color;
+  d.style.left = 30+Math.random()*40+'vw'; d.style.top = 30+Math.random()*30+'vh'; document.body.appendChild(d); setTimeout(() => d.remove(), 1200);
+};
+let shake = 0;
+
+// --- state ---
+let jumpQ = false, atkQ = false;
+const keys = {}; addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space' && !e.repeat) jumpQ = true; });
+addEventListener('mousedown', e => { if (e.button === 0) atkQ = true; }); addEventListener('keyup', e => keys[e.code] = false);
+let running = false, score = 0, lives, vy, spawnT, actionT, combo, giantT, dashT = 0, dashCd = 0, dashDir = new THREE.Vector3(0, 0, 1);
+let jumps = 0, atkCd = 0, lungeT = 0, pounding = false, invT = 0, hitstop = 0;
+const facing = () => new THREE.Vector3(Math.sin(john.rotation.y), 0, Math.cos(john.rotation.y));
+const comboUp = () => {
+  combo++;
+  if (combo % GIANT_EVERY === 0) { giantT = 6; say('MEGA JOHN PORK', .1); pop('🐷 MEGA PORK MODE 🐷', '#f6f'); sfx.boom(); shake = .5; }
+  else if (combo % 5 === 0) { play('Breakdance_1990', true); actionT = 1.6; say('Hello? Hello?'); }
+};
+const drop = p => { scene.remove(p); phones.splice(phones.indexOf(p), 1); };
+const answer = p => {
+  drop(p); const gold = p.userData.kind === 'gold', mult = 1 + Math.floor(combo/5);
+  score += (gold ? 5 : 1)*mult; sfx.oink(); sfx.coin(); splash(p.position, gold ? 0xffcc00 : 0x33ff66);
+  pop(gold ? `GOLDEN PORK +${5*mult} 🏆` : MEMES[Math.random()*MEMES.length|0], gold ? '#fc0' : '#fff'); comboUp();
+};
+const smash = (p, txt) => {
+  phones.splice(phones.indexOf(p), 1); const mult = 1 + Math.floor(combo/5); score += mult;
+  p.userData.fly = p.position.clone().sub(john.position).setY(0).normalize().multiplyScalar(28).setY(14); p.userData.life = .6; flying.push(p);
+  sfx.smack(); hitstop = HITSTOP; shake = Math.max(shake, .35); splash(p.position, 0xff8800); pop(`${txt} +${mult}`, '#f80'); comboUp();
+};
+$('menu').onclick = () => {
+  if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.connect(ac.destination); } bgm.play();
+  if (!john) return;
+  score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = false;
+  phones.forEach(p => scene.remove(p)); phones = [];
+  john.position.set(0, 0, 0); $('menu').style.display = 'none'; running = true; sfx.oink(); say('Hello? This is John Pork');
+};
+const gameOver = () => {
+  running = false; john.visible = true; play('Fall1', true); say('John Pork declined your call', .1);
+  setTimeout(() => { $('msg').textContent = `${score} CALLS ANSWERED · CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 2000);
+};
+
+const clock = new THREE.Clock(), v3 = new THREE.Vector3();
+ren.setAnimationLoop(() => {
+  let dt = Math.min(clock.getDelta(), .05); if (hitstop > 0) { hitstop -= dt; dt *= .06; }
+  const now = performance.now()/1000;
+  grade.uniforms.t.value = now % 10; dust.rotation.y = now*.02; dust.position.y = Math.sin(now*.3)*.5;
+  mixer?.update(dt);
+  deco.forEach((d, i) => { d.rotation.x += dt*.3; d.rotation.y += dt*(.2+i*.02); d.position.y += Math.sin(now+i)*.005; });
+  for (const p of [...parts]) {
+    p.userData.v.y -= 20*dt; p.position.addScaledVector(p.userData.v, dt); p.userData.life -= dt; p.scale.setScalar(Math.max(p.userData.life, .01));
+    if (p.userData.life <= 0) { scene.remove(p); parts.splice(parts.indexOf(p), 1); }
+  }
+  for (const p of [...flying]) {
+    const u = p.userData; u.fly.y -= 40*dt; p.position.addScaledVector(u.fly, dt); p.rotation.x += dt*25; p.rotation.z += dt*18;
+    if ((u.life -= dt) <= 0) { splash(p.position, 0xff2222); scene.remove(p); flying.splice(flying.indexOf(p), 1); }
+  }
+  for (const m of [...rings]) {
+    const u = m.userData; u.life -= dt*2.5; m.scale.setScalar(1 + (1-u.life)*u.r); m.material.opacity = u.life;
+    if (u.life <= 0) { scene.remove(m); rings.splice(rings.indexOf(m), 1); }
+  }
+  if (john && running) {
+    const dir = new THREE.Vector3((keys.KeyD?1:0)-(keys.KeyA?1:0), 0, (keys.KeyS?1:0)-(keys.KeyW?1:0));
+    const onGround = john.position.y <= 0;
+    if (dir.lengthSq()) {
+      dir.normalize(); john.position.addScaledVector(dir, SPEED*(giantT > 0 ? 1.5 : 1)*dt);
+      const yaw = Math.atan2(dir.x, dir.z), d = ((yaw - john.rotation.y + Math.PI*3) % (Math.PI*2)) - Math.PI;
+      john.rotation.y += d*Math.min(1, dt*12);
+    }
+    if (dir.lengthSq()) dashDir.copy(dir);
+    dashCd -= dt; dashT -= dt;
+    if ((keys.ShiftLeft || keys.ShiftRight) && dashCd <= 0) { dashT = .18; dashCd = DASH_CD; invT = Math.max(invT, .35); tone(600, 0, .15, 'sawtooth', .08, 150); splash(john.position.clone().setY(.3), 0x5a3a1e); play('Female_Head_Down_Charge', true); actionT = .35; if (!onGround) vy = Math.max(vy, 3); }
+    if (dashT > 0) john.position.addScaledVector(dashDir, DASH*dt);
+    atkCd -= dt; lungeT -= dt; invT -= dt;
+    if (atkQ && atkCd <= 0) {
+      if (!onGround && !pounding) { pounding = true; vy = -POUND_SPEED; play('360_Power_Spin_Jump', true); actionT = .8; sfx.whoosh(); }
+      else if (onGround) {
+        atkCd = KICK_CD; lungeT = .14; play('Boxing_Guard_Right_Straight_Kick', true); actionT = .55; sfx.whoosh();
+        const f = facing();
+        for (const p of [...phones]) if (p.userData.kind === 'spam') { v3.copy(p.position).sub(john.position).setY(0); const d = v3.length(); if (d < KICK_RANGE && (d < 1.8 || v3.normalize().dot(f) > .3)) smash(p, 'BLOCKED 🚫'); }
+      }
+    }
+    atkQ = false;
+    if (lungeT > 0) john.position.addScaledVector(facing(), LUNGE*dt);
+    john.position.clampLength(0, ARENA);
+    if (jumpQ && (onGround || jumps < 2)) {
+      if (onGround) { vy = JUMP; jumps = 1; play('Back_Jump', true); actionT = .6; }
+      else { vy = DOUBLE_JUMP; jumps = 2; play(Math.random() < .5 ? '360_Power_Spin_Jump' : 'Backflip_and_Rise', true); actionT = .9; splash(john.position.clone(), 0xffffff); pop('DOUBLE JUMP', '#aef'); }
+      sfx.jump();
+    }
+    jumpQ = false;
+    vy -= GRAVITY*dt; john.position.y = Math.max(0, john.position.y + vy*dt);
+    if (john.position.y <= 0 && !onGround) {
+      jumps = 0;
+      if (pounding) {
+        pounding = false; sfx.slam(); shake = .7; hitstop = HITSTOP; ring(john.position, POUND_R*1.6); splash(john.position.clone().setY(.3), 0x5a3a1e); pop('PORK SLAM 💥', '#f6f');
+        for (const p of [...phones]) if (p.position.distanceTo(v3.copy(john.position).setY(1.6)) < POUND_R) p.userData.kind === 'spam' ? smash(p, 'SLAMMED') : answer(p);
+      }
+    }
+    john.visible = invT <= .35 || Math.floor(now*20) % 2 === 0;
+    giantT -= dt; john.scale.setScalar(THREE.MathUtils.lerp(john.scale.x, baseScale*(giantT > 0 ? 2.5 : 1), .1));
+    actionT -= dt;
+    if (actionT <= 0) play(dir.lengthSq() ? 'Running' : 'Excited_Walk_M');
+    if (cur === acts.Excited_Walk_M) cur.timeScale = 0; else if (cur) cur.timeScale = 1;
+    if ((spawnT -= dt) <= 0) { spawnPhone(); spawnT = Math.max(.6, SPAWN_EVERY - score*.05); }
+    let urgent = 99;
+    for (const p of [...phones]) {
+      const ttl = p.userData.ttl -= dt;
+      p.rotation.y += dt*3; p.position.y = 1.6 + Math.sin(now*6)*.2;
+      p.rotation.z = ttl < 2 && p.userData.kind !== 'spam' ? Math.sin(now*50)*.3 : 0;
+      if (p.userData.kind === 'spam') p.position.addScaledVector(v3.copy(john.position).sub(p.position).setY(0).normalize(), dt*(1.5 + score*.03));
+      if (p.userData.kind !== 'spam' && Math.floor(ttl*2) !== Math.floor((ttl+dt)*2)) sfx.ring();
+      if (p.userData.kind !== 'spam') urgent = Math.min(urgent, ttl);
+      if (p.position.distanceTo(v3.copy(john.position).setY(1.6)) < 1.6*(giantT > 0 ? 2 : 1)) {
+        if (p.userData.kind !== 'spam') { answer(p); continue; }
+        if (dashT > 0 || pounding || giantT > 0) { smash(p, dashT > 0 ? 'DASHED 💨' : 'CRUSHED'); continue; }
+        if (invT > 0) continue;
+        drop(p); lives--; combo = 0; invT = HURT_IFRAMES; sfx.boom(); shake = .8; splash(p.position, 0xff2222); pop('SCAM CALL 🤡', '#f44'); const rd = new Audio('redeem.mp3'); rd.volume = .9; rd.play(); if (lives <= 0) gameOver();
+      } else if (ttl <= 0 && p.userData.kind === 'spam') { scene.remove(p); phones.splice(phones.indexOf(p), 1);
+      } else if (ttl <= 0) {
+        scene.remove(p); phones.splice(phones.indexOf(p), 1); lives--; combo = 0;
+        sfx.boom(); splash(p.position, 0xff2222); shake = 1;
+        $('scare').style.display = 'flex'; setTimeout(() => $('scare').style.display = 'none', 700);
+        if (lives <= 0) gameOver();
+      }
+    }
+    $('hud').textContent = `📞 ${score}   ${'🐷'.repeat(Math.max(lives, 0))}`;
+    $('combo').textContent = (combo > 1 ? `x${combo} COMBO` : '') + (combo >= 5 ? ` · ${1+Math.floor(combo/5)}x PTS` : '') + (dashCd > 0 ? '' : ' ⚡');
+    $('call').textContent = phones.length ? `John Pork is calling... ${urgent.toFixed(1)}s` : '';
+  }
+  if (john) {
+    const back = running ? new THREE.Vector3(0, 6, 10).multiplyScalar(giantT > 0 ? 1.6 : 1) : new THREE.Vector3(Math.sin(now*.3)*7, 3, Math.cos(now*.3)*7);
+    cam.position.lerp(v3.copy(john.position).add(back), .08);
+    cam.lookAt(john.position.x, john.position.y+1.2, john.position.z);
+    if (shake > 0) { cam.position.x += (Math.random()-.5)*shake; cam.position.y += (Math.random()-.5)*shake; shake -= dt*2; }
+    sun.position.set(john.position.x+15, 25, john.position.z+10); sun.target.position.copy(john.position); sun.target.updateMatrixWorld();
+  }
+  composer.render();
+});
+</script></body></html>
