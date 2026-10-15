@@ -19,7 +19,7 @@ body{margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;c
 </style></head><body>
 <div id="hud"></div><div id="combo"></div><div id="call"></div>
 <div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
-<div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · dash through spam<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
+<div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · hold SPACE after double jump = glide<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -31,8 +31,9 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 
-const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 6, SPAWN_EVERY = 2.2, LIVES = 3, ARENA = 25;
-const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 22, DASH_CD = 1.5, MIN_TTL = 3.5;
+const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVES = 5, ARENA = 25;
+const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 22, DASH_CD = 1.5, MIN_TTL = 4.5;
+const RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
 const MEMES = ['bro picked up 💀','+1000 aura','OINK OINK','he\'s calling again','skibidi pork 🚽','W rizz','hello?? 🐷','sigma pork','no cap fr','💀💀💀','ratio + oink'];
 
@@ -169,7 +170,7 @@ const spawnPhone = () => {
   body.castShadow = true; g.add(body, screen, back);
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, 30, 16, 1, true), beamMat(K.beam)); beam.position.y = 14; g.add(beam);
   g.position.set((Math.random()-.5)*2*ARENA*.85, 1.6, (Math.random()-.5)*2*ARENA*.85);
-  g.userData = {ttl: Math.max(MIN_TTL, PHONE_TTL - score*.05), kind}; scene.add(g); phones.push(g); if (kind !== 'spam') sfx.ring();
+  g.userData = {ttl: Math.max(MIN_TTL, PHONE_TTL - score*RAMP), kind}; scene.add(g); phones.push(g); if (kind !== 'spam') sfx.ring();
 };
 // splash particles
 const parts = [];
@@ -204,6 +205,7 @@ let jumps = 0, atkCd = 0, lungeT = 0, pounding = false, invT = 0, hitstop = 0;
 const facing = () => new THREE.Vector3(Math.sin(john.rotation.y), 0, Math.cos(john.rotation.y));
 const comboUp = () => {
   combo++;
+  if (combo % LIFE_EVERY === 0 && lives < MAX_LIVES) { lives++; pop('+1 🐷 EXTRA LIFE', '#6f6'); }
   if (combo % GIANT_EVERY === 0) { giantT = 6; say('MEGA JOHN PORK', .1); pop('🐷 MEGA PORK MODE 🐷', '#f6f'); sfx.boom(); shake = .5; }
   else if (combo % 5 === 0) { play('Breakdance_1990', true); actionT = 1.6; say('Hello? Hello?'); }
 };
@@ -223,11 +225,13 @@ $('menu').onclick = () => {
   if (!john) return;
   score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = false;
   phones.forEach(p => scene.remove(p)); phones = [];
-  john.position.set(0, 0, 0); $('menu').style.display = 'none'; running = true; sfx.oink(); say('Hello? This is John Pork');
+  dying = false; halo.visible = false; john.rotation.set(0, 0, 0); john.position.set(0, 0, 0); $('menu').style.display = 'none'; running = true; sfx.oink(); say('Hello? This is John Pork');
 };
+let dying = false;
+const halo = new THREE.Mesh(new THREE.TorusGeometry(.45, .06, 8, 32), new THREE.MeshBasicMaterial({color:0xffee88})); halo.rotation.x = Math.PI/2; halo.visible = false; scene.add(halo);
 const gameOver = () => {
-  running = false; john.visible = true; play('Fall1', true); say('John Pork declined your call', .1);
-  setTimeout(() => { $('msg').textContent = `${score} CALLS ANSWERED · CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 2000);
+  running = false; dying = true; halo.visible = true; phones.forEach(p => scene.remove(p)); phones = []; sfx.boom(); john.visible = true; play('Fall1', true); say('John Pork declined your call', .1);
+  setTimeout(() => { $('msg').textContent = `${score} CALLS ANSWERED · CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 4000);
 };
 
 const clock = new THREE.Clock(), v3 = new THREE.Vector3();
@@ -279,7 +283,8 @@ ren.setAnimationLoop(() => {
       sfx.jump();
     }
     jumpQ = false;
-    vy -= GRAVITY*dt; john.position.y = Math.max(0, john.position.y + vy*dt);
+    vy -= GRAVITY*dt; if (keys.Space && vy < -GLIDE_FALL && !pounding && jumps === 2) vy = -GLIDE_FALL;
+    john.position.y = Math.max(0, john.position.y + vy*dt);
     if (john.position.y <= 0 && !onGround) {
       jumps = 0;
       if (pounding) {
@@ -292,13 +297,15 @@ ren.setAnimationLoop(() => {
     actionT -= dt;
     if (actionT <= 0) play(dir.lengthSq() ? 'Running' : 'Excited_Walk_M');
     if (cur === acts.Excited_Walk_M) cur.timeScale = 0; else if (cur) cur.timeScale = 1;
-    if ((spawnT -= dt) <= 0) { spawnPhone(); spawnT = Math.max(.6, SPAWN_EVERY - score*.05); }
+    if ((spawnT -= dt) <= 0) { spawnPhone(); spawnT = Math.max(.6, SPAWN_EVERY - score*RAMP); }
     let urgent = 99;
     for (const p of [...phones]) {
+      if (!running) break;
       const ttl = p.userData.ttl -= dt;
       p.rotation.y += dt*3; p.position.y = 1.6 + Math.sin(now*6)*.2;
       p.rotation.z = ttl < 2 && p.userData.kind !== 'spam' ? Math.sin(now*50)*.3 : 0;
       if (p.userData.kind === 'spam') p.position.addScaledVector(v3.copy(john.position).sub(p.position).setY(0).normalize(), dt*(1.5 + score*.03));
+      else if (v3.copy(john.position).sub(p.position).setY(0).length() < MAGNET_R) p.position.addScaledVector(v3.normalize(), MAGNET_PULL*dt);
       if (p.userData.kind !== 'spam' && Math.floor(ttl*2) !== Math.floor((ttl+dt)*2)) sfx.ring();
       if (p.userData.kind !== 'spam') urgent = Math.min(urgent, ttl);
       if (p.position.distanceTo(v3.copy(john.position).setY(1.6)) < 1.6*(giantT > 0 ? 2 : 1)) {
@@ -318,6 +325,7 @@ ren.setAnimationLoop(() => {
     $('combo').textContent = (combo > 1 ? `x${combo} COMBO` : '') + (combo >= 5 ? ` · ${1+Math.floor(combo/5)}x PTS` : '') + (dashCd > 0 ? '' : ' ⚡');
     $('call').textContent = phones.length ? `John Pork is calling... ${urgent.toFixed(1)}s` : '';
   }
+  if (john && dying) { john.position.y = Math.min(john.position.y + ASCEND*dt, 14); john.rotation.y += dt*.8; halo.position.copy(john.position).setY(john.position.y + 2.5); }
   if (john) {
     const back = running ? new THREE.Vector3(0, 6, 10).multiplyScalar(giantT > 0 ? 1.6 : 1) : new THREE.Vector3(Math.sin(now*.3)*7, 3, Math.cos(now*.3)*7);
     cam.position.lerp(v3.copy(john.position).add(back), .08);
