@@ -1,7 +1,7 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>John Pork 3D</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>John Pork 3D</title>
 <style>
-body{margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;color:#fff;user-select:none}
+body{touch-action:none;margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;color:#fff;user-select:none}
 #hud{position:fixed;top:10px;left:14px;font-size:30px;text-shadow:3px 3px #000}
 #combo{position:fixed;top:10px;right:16px;font-size:40px;color:#ff0;text-shadow:3px 3px #000}
 #menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(#3a1f3fcc,#000e);cursor:pointer}
@@ -9,6 +9,12 @@ body{margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;c
 #menu p{font-size:32px;margin:0;text-shadow:3px 3px #000;animation:blink 1s steps(2) infinite}
 #call{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:34px;color:#4f4;text-shadow:3px 3px #000}
 #speed{position:fixed;inset:0;pointer-events:none;opacity:0;background:repeating-conic-gradient(from 0deg,#0000 0 1.6deg,#fff8 1.8deg 2.1deg,#0000 2.3deg 4.1deg);-webkit-mask:radial-gradient(#0000 35%,#000 75%);mask:radial-gradient(#0000 35%,#000 75%)}
+#touch{display:none}.coarse #touch{display:block}
+#stick{position:fixed;left:24px;bottom:24px;width:140px;height:140px;border-radius:50%;background:#fff2;border:3px solid #fff5}
+#knob{position:absolute;left:40px;top:40px;width:60px;height:60px;border-radius:50%;background:#fff8}
+#btns{position:fixed;right:20px;bottom:24px;display:grid;grid-template-columns:repeat(2,80px);gap:14px}
+#btns b{width:80px;height:80px;border-radius:50%;background:#fff3;border:3px solid #fff6;display:flex;align-items:center;justify-content:center;font-size:36px}
+#btns b:first-child{grid-column:span 2;justify-self:center}
 #scare{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:#a00a;pointer-events:none}
 #scare img{width:min(70vh,90vw);animation:zoom .6s ease-out}
 #scare b{font-size:80px;text-shadow:4px 4px #000}
@@ -19,7 +25,7 @@ body{margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;c
 @keyframes up{to{transform:translateY(-120px) scale(1.4);opacity:0}}
 </style></head><body>
 <div id="hud"></div><div id="combo"></div><div id="call"></div>
-<div id="speed"></div><div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
+<div id="speed"></div><div id="touch"><div id="stick"><div id="knob"></div></div><div id="btns"><b data-a="jump">⬆️</b><b data-a="atk">👊</b><b data-a="dash">⚡</b></div></div><div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
 <div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · hold SPACE after double jump = glide<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
 <script type="module">
@@ -35,13 +41,14 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 
 const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVES = 5, ARENA = 25;
 const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 30, DASH_CD = 1.2, MIN_TTL = 4.5;
+const MOBILE = matchMedia('(pointer: coarse)').matches, JOY_DEAD = .2;
 const DASH_CHARGES = 3, GHOST_EVERY = .025, GHOST_LIFE = .45, ANSWER_BONUS = 2, RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
 const MEMES = ['bro picked up 💀','+1000 aura','OINK OINK','he\'s calling again','skibidi pork 🚽','W rizz','hello?? 🐷','sigma pork','no cap fr','💀💀💀','ratio + oink'];
 
 // --- renderer / scene ---
 const ren = new THREE.WebGLRenderer({antialias:true});
-ren.setPixelRatio(Math.min(devicePixelRatio, 2)); ren.setSize(innerWidth, innerHeight);
+ren.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1 : 2)); ren.setSize(innerWidth, innerHeight);
 ren.shadowMap.enabled = true; ren.shadowMap.type = THREE.PCFSoftShadowMap;
 ren.toneMapping = THREE.ACESFilmicToneMapping; ren.toneMappingExposure = 1.1;
 document.body.appendChild(ren.domElement);
@@ -96,7 +103,7 @@ const scatter = (geo, mat, n, rmin, rmax, f) => {
   scene.add(im); return im;
 };
 const grass = new THREE.ConeGeometry(.08, .7, 3); grass.translate(0, .35, 0);
-scatter(grass, new THREE.MeshStandardMaterial({color:0xffffff, roughness:.8}), 4000, 0, ARENA+30, d => { d.scale.set(1, R(.5, 1.6), 1); d.rotation.x = R(-.3, .3); });
+scatter(grass, new THREE.MeshStandardMaterial({color:0xffffff, roughness:.8}), MOBILE ? 1200 : 4000, 0, ARENA+30, d => { d.scale.set(1, R(.5, 1.6), 1); d.rotation.x = R(-.3, .3); });
 const rockMat = new THREE.MeshStandardMaterial({color:0x777066, roughness:.9, flatShading:true});
 const rocks = scatter(new THREE.DodecahedronGeometry(.6, 0), rockMat, 60, 3, ARENA+30, d => { d.scale.set(R(.5, 2), R(.4, 1.2), R(.5, 2)); d.position.y = .1; });
 for (let i = 0; i < 60; i++) rocks.setColorAt(i, new THREE.Color(0x887766));
@@ -224,7 +231,19 @@ const billboards = Array.from({length:8}, (_, i) => skySprite(callTex, [9, 9]));
 // --- state ---
 let dashQ = false, dashN = DASH_CHARGES, ghostT = 0, jumpQ = false, atkQ = false;
 const keys = {}; addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space' && !e.repeat) jumpQ = true; if (e.code.startsWith('Shift') && !e.repeat) dashQ = true; });
-addEventListener('mousedown', e => { if (e.button === 0) atkQ = true; }); addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) atkQ = true; });
+// touch: virtual stick + buttons
+if (MOBILE) document.body.classList.add('coarse');
+const joy = {x:0, z:0}, stick = $('stick'); let joyId = null;
+const moveJoy = e => { const r = stick.getBoundingClientRect(), h = r.width/2; let x = (e.clientX-r.left-h)/h, z = (e.clientY-r.top-h)/h; const l = Math.hypot(x, z); if (l > 1) { x /= l; z /= l; } joy.x = x; joy.z = z; $('knob').style.transform = `translate(${x*h*.6}px,${z*h*.6}px)`; };
+const endJoy = e => { if (e.pointerId !== joyId) return; joyId = null; joy.x = joy.z = 0; $('knob').style.transform = ''; };
+stick.addEventListener('pointerdown', e => { joyId = e.pointerId; stick.setPointerCapture(joyId); moveJoy(e); });
+stick.addEventListener('pointermove', e => e.pointerId === joyId && moveJoy(e));
+stick.addEventListener('pointerup', endJoy); stick.addEventListener('pointercancel', endJoy);
+for (const b of document.querySelectorAll('#btns b')) {
+  b.addEventListener('pointerdown', e => { e.preventDefault(); const a = b.dataset.a; if (a === 'jump') { jumpQ = true; keys.Space = true; } else if (a === 'dash') dashQ = true; else atkQ = true; });
+  b.addEventListener('pointerup', () => { if (b.dataset.a === 'jump') keys.Space = false; });
+} addEventListener('keyup', e => keys[e.code] = false);
 let running = false, score = 0, lives, vy, spawnT, actionT, combo, giantT, dashT = 0, dashCd = 0, dashDir = new THREE.Vector3(0, 0, 1);
 let jumps = 0, atkCd = 0, lungeT = 0, pounding = false, invT = 0, hitstop = 0;
 const facing = () => new THREE.Vector3(Math.sin(john.rotation.y), 0, Math.cos(john.rotation.y));
@@ -285,6 +304,7 @@ ren.setAnimationLoop(() => {
   }
   if (john && running) {
     const dir = new THREE.Vector3((keys.KeyD?1:0)-(keys.KeyA?1:0), 0, (keys.KeyS?1:0)-(keys.KeyW?1:0));
+    if (Math.hypot(joy.x, joy.z) > JOY_DEAD) dir.set(joy.x, 0, joy.z);
     const onGround = john.position.y <= 0;
     if (dir.lengthSq()) {
       dir.normalize(); john.position.addScaledVector(dir, SPEED*(giantT > 0 ? 1.5 : 1)*dt);
