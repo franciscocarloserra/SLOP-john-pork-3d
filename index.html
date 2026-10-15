@@ -3,10 +3,13 @@
 <style>
 body{touch-action:none;margin:0;overflow:hidden;background:#1a0f1f;font-family:Impact,sans-serif;color:#fff;user-select:none}
 #hud{position:fixed;top:10px;left:14px;font-size:30px;text-shadow:3px 3px #000}
-#combo{position:fixed;top:10px;right:16px;font-size:40px;color:#ff0;text-shadow:3px 3px #000}
+#combo{position:fixed;top:10px;right:16px;font-size:40px;color:#ff0;text-shadow:3px 3px #000;animation:rb 1s linear infinite}
+@keyframes rb{to{filter:hue-rotate(360deg)}}
+#hm{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%) rotate(45deg);font-size:90px;color:#fff;text-shadow:0 0 6px #000;display:none;pointer-events:none}
 #menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(#3a1f3fcc,#000e);cursor:pointer}
 #menu img{width:min(62vh,80vw);animation:bob 1.2s ease-in-out infinite;filter:drop-shadow(0 10px 30px #000)}
 #menu p{font-size:32px;margin:0;text-shadow:3px 3px #000;animation:blink 1s steps(2) infinite}
+#cbar{position:fixed;top:58px;right:16px;height:8px;background:linear-gradient(90deg,#f0f,#ff0);box-shadow:0 0 10px #ff0;border-radius:4px}
 #call{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:34px;color:#4f4;text-shadow:3px 3px #000}
 #speed{position:fixed;inset:0;pointer-events:none;opacity:0;background:repeating-conic-gradient(from 0deg,#0000 0 1.6deg,#fff8 1.8deg 2.1deg,#0000 2.3deg 4.1deg);-webkit-mask:radial-gradient(#0000 35%,#000 75%);mask:radial-gradient(#0000 35%,#000 75%)}
 #touch{display:none}.coarse #touch{display:block}
@@ -24,7 +27,7 @@ body{touch-action:none;margin:0;overflow:hidden;background:#1a0f1f;font-family:I
 @keyframes zoom{from{transform:scale(.2) rotate(-20deg)}}
 @keyframes up{to{transform:translateY(-120px) scale(1.4);opacity:0}}
 </style></head><body>
-<div id="hud"></div><div id="combo"></div><div id="call"></div>
+<div id="hud"></div><div id="hm">✚</div><div id="combo"></div><div id="cbar"></div><div id="call"></div>
 <div id="speed"></div><div id="touch"><div id="stick"><div id="knob"></div></div><div id="btns"><b data-a="jump">⬆️</b><b data-a="atk">👊</b><b data-a="dash">⚡</b></div></div><div id="scare"><img src="call.jpeg"><b>DECLINED 💀</b></div>
 <div id="menu"><img src="logo.png"><p id="msg">CLICK TO ANSWER · WASD · SPACE x2 · SHIFT DASH<br><small>CLICK kick · CLICK in air = SLAM · hold SPACE after double jump = glide<br>🟢 answer · 🟡 x5 · 🔴 SPAM chases you</small></p></div>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
@@ -42,6 +45,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVES = 5, ARENA = 25;
 const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 30, DASH_CD = 1.2, MIN_TTL = 4.5;
 const MOBILE = matchMedia('(pointer: coarse)').matches, JOY_DEAD = .2;
+const COMBO_WINDOW = 4, CLUTCH_T = 1.2, POWER_CHANCE = .35, POWER_LIFE = 10, MAGNET_T = 8, STAR_T = 3;
 const DASH_CHARGES = 3, GHOST_EVERY = .025, GHOST_LIFE = .45, ANSWER_BONUS = 2, RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
 const MEMES = ['bro picked up 💀','+1000 aura','OINK OINK','he\'s calling again','skibidi pork 🚽','W rizz','hello?? 🐷','sigma pork','no cap fr','💀💀💀','ratio + oink'];
@@ -59,9 +63,9 @@ const composer = new EffectComposer(ren);
 composer.addPass(new RenderPass(scene, cam));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .6, .5, .85));
 composer.addPass(new OutputPass());
-const grade = new ShaderPass({uniforms:{tDiffuse:{value:null}, t:{value:0}, fry:{value:0}, hue:{value:0}},
+const grade = new ShaderPass({uniforms:{tDiffuse:{value:null}, t:{value:0}, fry:{value:0}, hue:{value:0}, rad:{value:0}, inv:{value:0}},
   vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-  fragmentShader:'uniform sampler2D tDiffuse;uniform float t,fry,hue;varying vec2 vUv;vec3 hs(vec3 c,float a){vec3 k=vec3(.57735);float ca=cos(a);return c*ca+cross(k,c)*sin(a)+k*dot(k,c)*(1.-ca);}float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}void main(){vec2 o=(vUv-.5)*.003;vec3 c=vec3(texture2D(tDiffuse,vUv+o).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-o).b);c*=1.-.55*pow(length(vUv-.5)*1.3,2.5);c=mix(c,c*vec3(1.08,1.,1.05),.5);c=hs(c,hue);float l=dot(c,vec3(.299,.587,.114));vec3 d=clamp((mix(vec3(l),c,3.)-.5)*2.+.6,0.,1.)*vec3(1.25,.95,.6);c=mix(c,floor(d*5.)/5.,fry);c+=(h(vUv+t)-.5)*(.04+fry*.25);gl_FragColor=vec4(c,1.);}'});
+  fragmentShader:'uniform sampler2D tDiffuse;uniform float t,fry,hue,rad,inv;varying vec2 vUv;vec3 hs(vec3 c,float a){vec3 k=vec3(.57735);float ca=cos(a);return c*ca+cross(k,c)*sin(a)+k*dot(k,c)*(1.-ca);}float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}void main(){vec2 o=(vUv-.5)*(.003+rad*.05);vec3 c=vec3(0.);vec2 dc=(vUv-.5)*rad;for(int i=0;i<8;i++){vec2 u=vUv-dc*float(i)/8.;c+=vec3(texture2D(tDiffuse,u+o).r,texture2D(tDiffuse,u).g,texture2D(tDiffuse,u-o).b);}c/=8.;c*=1.-.55*pow(length(vUv-.5)*1.3,2.5);c=mix(c,c*vec3(1.08,1.,1.05),.5);c=hs(c,hue);float l=dot(c,vec3(.299,.587,.114));vec3 d=clamp((mix(vec3(l),c,3.)-.5)*2.+.6,0.,1.)*vec3(1.25,.95,.6);c=mix(c,floor(d*5.)/5.,fry);c+=(h(vUv+t)-.5)*(.04+fry*.25);c=mix(c,vec3(1.-step(.3,dot(c,vec3(.333)))),inv);gl_FragColor=vec4(c,1.);}'});
 composer.addPass(grade);
 addEventListener('resize', () => {cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix(); ren.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);});
 
@@ -140,10 +144,12 @@ const sfx = {
   jump: () => tone(250, 0, .25, 'square', .06, 1000),
   coin: () => { tone(988, 0, .08, 'square', .06); tone(1319, .08, .3, 'square', .06); },
   whoosh: () => tone(900, 0, .12, 'sawtooth', .05, 200),
+  airhorn: () => { for (const [t0, d] of [[0, .12], [.15, .12], [.3, .5]]) for (const f of [415, 523, 622]) tone(f, t0, d, 'sawtooth', .05, f*.97); },
+  tick: () => tone(2200, 0, .04, 'square', .08),
   smack: () => { tone(180, 0, .18, 'square', .35, 40); tone(1200, 0, .06, 'sawtooth', .15, 300); },
   slam: () => { tone(90, 0, .6, 'sine', .9, 25); tone(300, 0, .3, 'square', .2, 50); },
 };
-const bgm = new Audio('music.mp3'); bgm.loop = true; bgm.volume = MUSIC_VOL;
+const bgm = new Audio('music.mp3'); bgm.loop = true; bgm.volume = MUSIC_VOL; bgm.preservesPitch = false;
 
 // --- John ---
 let john, mixer, acts = {}, cur, baseScale = 1;
@@ -178,10 +184,16 @@ const spawnPhone = () => {
   const back = screen.clone(); back.rotation.y = Math.PI; back.position.z = -.065;
   body.castShadow = true; g.add(body, screen, back);
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, 30, 16, 1, true), beamMat(K.beam)); beam.position.y = 14; g.add(beam);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshBasicMaterial({map:glowTex, color:K.beam, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false}));
+  pool.rotation.x = -Math.PI/2; pool.position.y = -1.5; const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:K.beam, blending:THREE.AdditiveBlending, depthWrite:false, opacity:.7})); glow.scale.setScalar(4); g.add(pool, glow);
+  if (kind === 'spam') { const clown = new THREE.Sprite(new THREE.SpriteMaterial({map:emoji('🤡'), fog:false})); clown.position.y = 1.7; clown.scale.setScalar(1.2); g.add(clown); }
   g.position.set((Math.random()-.5)*2*ARENA*.85, 1.6, (Math.random()-.5)*2*ARENA*.85);
   g.userData = {ttl: Math.max(MIN_TTL, PHONE_TTL - score*RAMP), kind}; scene.add(g); phones.push(g); if (kind !== 'spam') sfx.ring();
 };
 // splash particles
+const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, '#fff'); gr.addColorStop(.3, '#fff6'); gr.addColorStop(1, '#fff0'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+let impactUntil = 0;
+const impact = (ms=70) => { impactUntil = performance.now() + ms; $('hm').style.display = 'block'; setTimeout(() => $('hm').style.display = 'none', 140); sfx.tick(); };
 const parts = [];
 const emoTex = {}, emoji = e => emoTex[e] ??= (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.font = '100px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(e, 64, 72); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 const EMOJIS = ['💀','🔥','😂','💯','🐷','🗿','😭','📞'];
@@ -250,39 +262,58 @@ const facing = () => new THREE.Vector3(Math.sin(john.rotation.y), 0, Math.cos(jo
 const comboUp = () => {
   combo++;
   if (combo % LIFE_EVERY === 0 && lives < MAX_LIVES) { lives++; pop('+1 🐷 EXTRA LIFE', '#6f6'); }
-  if (combo % GIANT_EVERY === 0) { giantT = 6; say('MEGA JOHN PORK', .1); pop('🐷 MEGA PORK MODE 🐷', '#f6f'); sfx.boom(); shake = .5; }
+  if (combo % 5 === 0) sfx.airhorn();
+  if (combo % GIANT_EVERY === 0) { giantT = 6; for (let i = 0; i < 8; i++) setTimeout(() => splash(john.position.clone().add(new THREE.Vector3(R(-10, 10), R(8, 16), R(-10, 10))), 0xffdd33), i*120); say('MEGA JOHN PORK', .1); pop('🐷 MEGA PORK MODE 🐷', '#f6f'); sfx.boom(); shake = .5; }
   else if (combo % 5 === 0) { play('Breakdance_1990', true); actionT = 1.6; say('Hello? Hello?'); }
+};
+let comboT = 0, magnetT = 0, starT = 0, best = +localStorage.jpBest || 0, bestShown = false, powers = [];
+const POWERS = {'🧲':'MAGNET', '❤️':'+1 LIFE', '⏱️':'+4s ALL CALLS', '⭐':'STAR POWER'};
+const spawnPower = pos => {
+  const e = Object.keys(POWERS)[Math.random()*4|0], m = new THREE.Sprite(new THREE.SpriteMaterial({map:emoji(e), fog:false}));
+  m.position.copy(pos).setY(1); m.scale.setScalar(1.4); m.userData = {e, life:POWER_LIFE}; scene.add(m); powers.push(m);
+};
+const grab = m => {
+  const e = m.userData.e; scene.remove(m); powers.splice(powers.indexOf(m), 1); sfx.coin(); sfx.airhorn(); pop(`${e} ${POWERS[e]}`, '#6ff');
+  if (e === '🧲') magnetT = MAGNET_T; else if (e === '❤️') lives = Math.min(MAX_LIVES, lives+1);
+  else if (e === '⏱️') phones.forEach(q => q.userData.ttl += 4); else { dashN = DASH_CHARGES; starT = STAR_T; }
 };
 const drop = p => { scene.remove(p); phones.splice(phones.indexOf(p), 1); };
 const answer = p => {
   drop(p); const gold = p.userData.kind === 'gold', mult = 1 + Math.floor(combo/5);
   for (const q of phones) if (q.userData.kind !== 'spam') q.userData.ttl = Math.min(PHONE_TTL, q.userData.ttl + ANSWER_BONUS*(gold ? 2 : 1));
-  score += (gold ? 5 : 1)*mult; sfx.oink(); sfx.coin(); splash(p.position, gold ? 0xffcc00 : 0x33ff66);
+  const clutch = p.userData.ttl < CLUTCH_T, air = john.position.y > .6;
+  score += (gold ? 5 : 1)*mult*(air ? 2 : 1) + (clutch ? 3*mult : 0); comboT = COMBO_WINDOW;
+  if (clutch) setTimeout(() => pop('CLUTCH 😤 +' + 3*mult, '#f55'), 150); if (air) setTimeout(() => pop('AIR CALL ✈️ x2', '#aef'), 300);
+  sfx.oink(); sfx.coin(); splash(p.position, gold ? 0xffcc00 : 0x33ff66);
   pop(gold ? `GOLDEN PORK +${5*mult} 🏆` : MEMES[Math.random()*MEMES.length|0], gold ? '#fc0' : '#fff'); comboUp();
 };
 const smash = (p, txt) => {
-  phones.splice(phones.indexOf(p), 1); const mult = 1 + Math.floor(combo/5); score += mult;
+  phones.splice(phones.indexOf(p), 1); const mult = 1 + Math.floor(combo/5); score += mult; comboT = COMBO_WINDOW; if (Math.random() < POWER_CHANCE) spawnPower(p.position);
   p.userData.fly = p.position.clone().sub(john.position).setY(0).normalize().multiplyScalar(28).setY(14); p.userData.life = .6; flying.push(p);
-  sfx.smack(); hitstop = HITSTOP; shake = Math.max(shake, .35); splash(p.position, 0xff8800); pop(`${txt} +${mult}`, '#f80'); comboUp();
+  sfx.smack(); impact(); hitstop = HITSTOP; shake = Math.max(shake, .35); splash(p.position, 0xff8800); pop(`${txt} +${mult}`, '#f80'); comboUp();
 };
 $('menu').onclick = () => {
   if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.connect(ac.destination); } bgm.play();
   if (!john) return;
-  score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = dashQ = false; dashN = DASH_CHARGES;
-  phones.forEach(p => scene.remove(p)); phones = [];
+  score = 0; lives = LIVES; vy = 0; spawnT = 0; actionT = 0; combo = 0; giantT = 0; jumps = 0; pounding = false; invT = 0; jumpQ = atkQ = dashQ = false; dashN = DASH_CHARGES; comboT = magnetT = starT = 0; bestShown = false;
+  [...phones, ...powers].forEach(p => scene.remove(p)); phones = []; powers = [];
   dying = false; halo.visible = false; john.rotation.set(0, 0, 0); john.position.set(0, 0, 0); $('menu').style.display = 'none'; running = true; sfx.oink(); say('Hello? This is John Pork');
 };
 let dying = false;
+const crown = new THREE.Sprite(new THREE.SpriteMaterial({map:emoji('👑'), fog:false})); scene.add(crown);
 const halo = new THREE.Mesh(new THREE.TorusGeometry(.45, .06, 8, 32), new THREE.MeshBasicMaterial({color:0xffee88})); halo.rotation.x = Math.PI/2; halo.visible = false; scene.add(halo);
 const gameOver = () => {
   running = false; dying = true; aura.material.uniforms.o.value = 0; halo.visible = true; phones.forEach(p => scene.remove(p)); phones = []; sfx.boom(); john.visible = true; play('Fall1', true); say('John Pork declined your call', .1);
-  setTimeout(() => { $('msg').textContent = `${score} CALLS ANSWERED · CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 4000);
+  setTimeout(() => { const nb = score > best; if (nb) localStorage.jpBest = best = score; $('msg').innerHTML = `🕊️ RIP JOHN PORK · ${score} PTS${nb ? ' · 🔥 NEW BEST 🔥' : ` · BEST ${best}`}<br>CLICK TO RETRY`; $('menu').style.display = 'flex'; play('Breakdance_1990'); }, 4000);
 };
 
 const clock = new THREE.Clock(), v3 = new THREE.Vector3();
 ren.setAnimationLoop(() => {
   let dt = Math.min(clock.getDelta(), .05); if (hitstop > 0) { hitstop -= dt; dt *= .06; }
   const now = performance.now()/1000;
+  const G = grade.uniforms; G.inv.value = performance.now() < impactUntil ? 1 : 0; G.rad.value = THREE.MathUtils.lerp(G.rad.value, running && (dashT > 0 || pounding) ? .14 : giantT > 0 && running ? .04 : 0, .25);
+  const rate = running && giantT > 0 ? 1.3 : 1; if (bgm.playbackRate !== rate) bgm.playbackRate = rate;
+  crown.visible = running && giantT > 0; if (john && crown.visible) { const k = john.scale.x/baseScale; crown.position.copy(john.position).setY(john.position.y + 2.7*k + Math.sin(now*6)*.1); crown.scale.setScalar(1.2*k); }
   grade.uniforms.t.value = now % 10; grade.uniforms.fry.value = Math.max(Math.min(shake*1.3, 1), dying ? .7 : 0); grade.uniforms.hue.value = giantT > 0 && running ? now*4 : 0;
   cam.fov = THREE.MathUtils.lerp(cam.fov, 55 + Math.max(shake, 0)*25, .2); cam.updateProjectionMatrix();
   billboards.forEach((b, i) => { const a = now*.05 + i/8*Math.PI*2; b.position.set(cam.position.x + Math.cos(a)*70, 22 + Math.sin(now + i)*4 + i%3*6, cam.position.z + Math.sin(a)*70); b.material.rotation = Math.sin(now*2 + i)*.3; });
@@ -318,7 +349,7 @@ ren.setAnimationLoop(() => {
     dashQ = false; atkCd -= dt; lungeT -= dt; invT -= dt;
     const fx = dashT > 0 || lungeT > 0 || pounding;
     if (fx && (ghostT -= dt) <= 0) { ghostT = GHOST_EVERY; spawnGhost(pounding ? 0xff44ff : dashT > 0 ? 0x44ccff : 0xffcc33); }
-    const auraOn = fx || giantT > 0; aura.material.uniforms.o.value = THREE.MathUtils.lerp(aura.material.uniforms.o.value, auraOn ? .8 + Math.random()*.4 : 0, .3);
+    const auraOn = fx || giantT > 0 || starT > 0; aura.material.uniforms.o.value = THREE.MathUtils.lerp(aura.material.uniforms.o.value, auraOn ? .8 + Math.random()*.4 : 0, .3);
     aura.material.uniforms.c.value.set(giantT > 0 ? 0xffdd33 : dashT > 0 ? 0x44ccff : 0xff66ff);
     aura.position.copy(john.position).setY(john.position.y + 1.1*john.scale.x/baseScale); aura.scale.set(.9, 1.5 + Math.random()*.15, .9).multiplyScalar(john.scale.x/baseScale);
     $('speed').style.opacity = dashT > 0 || pounding ? .9 : Math.max(0, +$('speed').style.opacity - dt*4);
@@ -344,7 +375,7 @@ ren.setAnimationLoop(() => {
     if (john.position.y <= 0 && !onGround) {
       jumps = 0;
       if (pounding) {
-        pounding = false; sfx.slam(); shake = .7; hitstop = HITSTOP; ring(john.position, POUND_R*1.6); splash(john.position.clone().setY(.3), 0x5a3a1e); pop('PORK SLAM 💥', '#f6f');
+        pounding = false; sfx.slam(); impact(110); for (let i = 0; i < 6; i++) setTimeout(() => splash(john.position.clone().add(new THREE.Vector3(R(-6, 6), R(5, 10), R(-6, 6))), 0xff66ff), i*90); shake = .7; hitstop = HITSTOP; ring(john.position, POUND_R*1.6); splash(john.position.clone().setY(.3), 0x5a3a1e); pop('PORK SLAM 💥', '#f6f');
         for (const p of [...phones]) if (p.position.distanceTo(v3.copy(john.position).setY(1.6)) < POUND_R) p.userData.kind === 'spam' ? smash(p, 'SLAMMED') : answer(p);
       }
     }
@@ -361,12 +392,12 @@ ren.setAnimationLoop(() => {
       p.rotation.y += dt*3; p.position.y = 1.6 + Math.sin(now*6)*.2;
       p.rotation.z = ttl < 2 && p.userData.kind !== 'spam' ? Math.sin(now*50)*.3 : 0;
       if (p.userData.kind === 'spam') p.position.addScaledVector(v3.copy(john.position).sub(p.position).setY(0).normalize(), dt*(1.5 + score*.03));
-      else if (v3.copy(john.position).sub(p.position).setY(0).length() < MAGNET_R) p.position.addScaledVector(v3.normalize(), MAGNET_PULL*dt);
+      else if (v3.copy(john.position).sub(p.position).setY(0).length() < MAGNET_R*(magnetT > 0 ? 4 : 1)) p.position.addScaledVector(v3.normalize(), MAGNET_PULL*(magnetT > 0 ? 3 : 1)*dt);
       if (p.userData.kind !== 'spam' && Math.floor(ttl*2) !== Math.floor((ttl+dt)*2)) sfx.ring();
       if (p.userData.kind !== 'spam') urgent = Math.min(urgent, ttl);
       if (p.position.distanceTo(v3.copy(john.position).setY(1.6)) < 1.6*(giantT > 0 ? 2 : 1)) {
         if (p.userData.kind !== 'spam') { answer(p); continue; }
-        if (dashT > 0 || pounding || giantT > 0) { smash(p, dashT > 0 ? 'DASHED 💨' : 'CRUSHED'); continue; }
+        if (dashT > 0 || pounding || giantT > 0 || starT > 0) { smash(p, dashT > 0 ? 'DASHED 💨' : 'CRUSHED'); continue; }
         if (invT > 0) continue;
         drop(p); lives--; combo = 0; invT = HURT_IFRAMES; sfx.boom(); shake = .8; splash(p.position, 0xff2222); pop('SCAM CALL 🤡', '#f44'); const rd = new Audio('redeem.mp3'); rd.volume = .9; rd.play(); if (lives <= 0) gameOver();
       } else if (ttl <= 0 && p.userData.kind === 'spam') { scene.remove(p); phones.splice(phones.indexOf(p), 1);
@@ -377,7 +408,15 @@ ren.setAnimationLoop(() => {
         if (lives <= 0) gameOver();
       }
     }
-    $('hud').textContent = `📞 ${score}   ${'🐷'.repeat(Math.max(lives, 0))}`;
+    magnetT -= dt; starT -= dt;
+    if (combo > 0 && (comboT -= dt) <= 0) { if (combo >= 3) pop('COMBO LOST 💔', '#f66'); combo = 0; }
+    if (!bestShown && best > 0 && score > best) { bestShown = true; pop('🔥 NEW BEST 🔥', '#fa0'); sfx.airhorn(); }
+    for (const m of [...powers]) {
+      m.position.y = 1 + Math.sin(now*4)*.25; m.material.rotation = Math.sin(now*3)*.3; m.material.opacity = m.userData.life < 3 ? (Math.sin(now*20) > 0 ? 1 : .2) : 1;
+      if (m.position.distanceTo(v3.copy(john.position).setY(1)) < 2*(giantT > 0 ? 2 : 1)) grab(m); else if ((m.userData.life -= dt) <= 0) { scene.remove(m); powers.splice(powers.indexOf(m), 1); }
+    }
+    $('cbar').style.width = combo > 0 ? Math.max(comboT, 0)/COMBO_WINDOW*200 + 'px' : '0';
+    $('hud').textContent = `📞 ${score}   ${'🐷'.repeat(Math.max(lives, 0))}${magnetT > 0 ? ' 🧲' : ''}${starT > 0 ? ' ⭐' : ''}   BEST ${Math.max(best, score)}`;
     $('combo').textContent = (combo > 1 ? `x${combo} COMBO` : '') + (combo >= 5 ? ` · ${1+Math.floor(combo/5)}x PTS` : '') + ' ' + '⚡'.repeat(dashN);
     $('call').textContent = phones.length ? `John Pork is calling... ${urgent.toFixed(1)}s` : '';
   }
