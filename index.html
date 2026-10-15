@@ -33,7 +33,7 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 
 const SPEED = 8, JUMP = 10, GRAVITY = 28, PHONE_TTL = 8, SPAWN_EVERY = 2.4, LIVES = 5, ARENA = 25;
 const MUSIC_VOL = .1, GIANT_EVERY = 10, GOLD_CHANCE = .12, SPAM_CHANCE = .25, DASH = 22, DASH_CD = 1.5, MIN_TTL = 4.5;
-const RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
+const ANSWER_BONUS = 2, RAMP = .025, LIFE_EVERY = 15, MAX_LIVES = 7, MAGNET_R = 4, MAGNET_PULL = 6, GLIDE_FALL = 2.5, ASCEND = 2.5;
 const DOUBLE_JUMP = 9, KICK_RANGE = 3.2, KICK_CD = .4, LUNGE = 16, POUND_SPEED = 38, POUND_R = 5.5, HITSTOP = .08, HURT_IFRAMES = 1.2;
 const MEMES = ['bro picked up 💀','+1000 aura','OINK OINK','he\'s calling again','skibidi pork 🚽','W rizz','hello?? 🐷','sigma pork','no cap fr','💀💀💀','ratio + oink'];
 
@@ -212,6 +212,7 @@ const comboUp = () => {
 const drop = p => { scene.remove(p); phones.splice(phones.indexOf(p), 1); };
 const answer = p => {
   drop(p); const gold = p.userData.kind === 'gold', mult = 1 + Math.floor(combo/5);
+  for (const q of phones) if (q.userData.kind !== 'spam') q.userData.ttl = Math.min(PHONE_TTL, q.userData.ttl + ANSWER_BONUS*(gold ? 2 : 1));
   score += (gold ? 5 : 1)*mult; sfx.oink(); sfx.coin(); splash(p.position, gold ? 0xffcc00 : 0x33ff66);
   pop(gold ? `GOLDEN PORK +${5*mult} 🏆` : MEMES[Math.random()*MEMES.length|0], gold ? '#fc0' : '#fff'); comboUp();
 };
